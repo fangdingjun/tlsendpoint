@@ -1,0 +1,27 @@
+listen:
+    -   :10312
+    -  127.0.0.1:11113
+
+certificate:
+  -
+    cert: a.pem
+    key: a.key
+  -
+    cert: b.pem
+    key: b.key
+
+forward:
+  -
+    sni: a.example.com
+    backend: tcp://127.0.0.1:9002
+  - 
+    sni: b.example.com
+    backend: http://127.0.0.1:8001
+  -
+    sni: b.example.com
+    backend: unix:///tmp/a.sock
+  -
+    sni: d.example.com
+    backend: tls://localhost:1921
+
+default_backend:  tcp://localhost:1212
