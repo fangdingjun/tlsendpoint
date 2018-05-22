@@ -1,3 +1,6 @@
 *.key
 *.pem
 tlsendpoint*
+*~
+*.crt
+config.yaml

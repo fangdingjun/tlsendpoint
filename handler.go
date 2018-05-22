@@ -31,15 +31,16 @@ func initHandler() {
 	for _, _l := range _config.Listen {
 		l, err := tls.Listen("tcp", _l, _tlsconfig)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("listen on %s error: %s", _l, err)
 		}
-
+		log.Printf("Listen on %s", l.Addr().String())
 		go func(l net.Listener) {
 			defer l.Close()
 			for {
 				c, err := l.Accept()
 				if err != nil {
-					break
+					log.Printf("accept error: %s", err)
+					continue
 				}
 				go handleConnection(c)
 			}
@@ -55,14 +56,16 @@ func handleConnection(c net.Conn) {
 	connstate := tlsconn.ConnectionState()
 	for !connstate.HandshakeComplete {
 		if err := tlsconn.Handshake(); err != nil {
-			log.Println(err)
+			log.Printf("handshake error: %s", err)
 			return
 		}
 		connstate = tlsconn.ConnectionState()
 	}
 
 	//log.Printf("handshake complete")
+
 	servername := connstate.ServerName
+
 	var backend *url.URL
 	for _, f := range _config.Forward {
 		if !f.match(servername) {
@@ -74,12 +77,19 @@ func handleConnection(c net.Conn) {
 	if backend == nil {
 		_b, err := url.Parse(_config.DefaultBackend)
 		if err != nil {
-			log.Println(err)
+			log.Printf("parse addr error: %s", err)
 			return
 		}
 		backend = _b
 	}
-	//log.Printf("sni name %s, get backend: %s", servername, backend.String())
+
+	log.Printf("connection from %s, tls version 0x%x, sni: %s, forward to: %s\n",
+		c.RemoteAddr().String(),
+		connstate.Version,
+		servername,
+		backend.String(),
+	)
+
 	handleForward(tlsconn, backend)
 }
 
@@ -98,15 +108,27 @@ func handleForward(c *tls.Conn, b *url.URL) {
 			b.Host = fmt.Sprintf("%s:80", b.Host)
 		}
 		remote, err = net.Dial("tcp", b.Host)
+		if err != nil {
+			log.Printf("dial to %s error: %s", b.Host, err)
+			return
+		}
 		httpForward(c, remote)
 		return
 	case "tls":
 		h, _, _ := net.SplitHostPort(b.Host)
 		remote, err = tls.Dial("tcp", b.Host, &tls.Config{ServerName: h})
+	default:
+		log.Printf("backend type '%s' is not supported", b.Scheme)
+		return
 	}
 
 	if err != nil {
-		log.Println(err)
+		log.Printf("dail to backend %s error: %s", b.String(), err)
+		return
+	}
+
+	if remote == nil {
+		log.Println("remote is nil")
 		return
 	}
 	//log.Println("begin data forward")
@@ -133,12 +155,14 @@ func httpForward(r, b net.Conn) {
 		req, err := http.ReadRequest(rb)
 		if err != nil {
 			if err != io.EOF {
-				log.Println(err)
+				log.Printf("read http request error: %s", err)
 				fmt.Fprintf(b, "HTTP/1.1 504 Bad gateway\r\nConnection: close\r\n\r\n")
 			}
 			return
 		}
+
 		addr := r.RemoteAddr().(*net.TCPAddr)
+
 		req.Header.Add("X-Forwarded-For", addr.IP.String())
 		req.Header.Add("X-Real-Ip", addr.IP.String())
 
@@ -147,7 +171,9 @@ func httpForward(r, b net.Conn) {
 
 		res, err := http.ReadResponse(bb, req)
 		if err != nil {
-			log.Println(err)
+			if err != io.EOF {
+				log.Printf("read http response from backend error: %s", err)
+			}
 			return
 		}
 		res.Write(r)

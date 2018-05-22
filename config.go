@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/tls"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/url"
@@ -34,6 +35,9 @@ func loadConfig(f string) (c *conf, err error) {
 	c = &conf{}
 	if err = yaml.Unmarshal(data, c); err != nil {
 		return
+	}
+	if c.DefaultBackend == "" {
+		return nil, fmt.Errorf("config error, empty default backend")
 	}
 	return
 }
