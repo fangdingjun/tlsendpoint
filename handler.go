@@ -2,9 +2,11 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -146,6 +148,28 @@ func handleForward(c *tls.Conn, b *url.URL) {
 	<-ch
 }
 
+func writeErrResponse(w io.Writer, status int, content string) {
+	hdr := http.Header{}
+	hdr.Add("Connection", "close")
+	hdr.Add("Server", "nginx/1.10.1")
+	hdr.Add("Content-Type", "text/plain")
+
+	r := bytes.NewBuffer([]byte(content))
+	body := ioutil.NopCloser(r)
+
+	res := &http.Response{
+		Status:        http.StatusText(status),
+		StatusCode:    status,
+		Proto:         "HTTP/1.1",
+		ProtoMajor:    1,
+		ProtoMinor:    1,
+		Header:        hdr,
+		Body:          body,
+		ContentLength: int64(len(content)),
+	}
+	res.Write(w)
+}
+
 func httpForward(r, b net.Conn) {
 	defer b.Close()
 
@@ -156,7 +180,8 @@ func httpForward(r, b net.Conn) {
 		if err != nil {
 			if err != io.EOF {
 				log.Printf("read http request error: %s", err)
-				fmt.Fprintf(b, "HTTP/1.1 504 Bad gateway\r\nConnection: close\r\n\r\n")
+				//fmt.Fprintf(b, "HTTP/1.1 504 Bad gateway\r\nConnection: close\r\n\r\n")
+				//writeErrResponse(b, http.StatusBadGateway, err.Error())
 			}
 			return
 		}
@@ -175,6 +200,7 @@ func httpForward(r, b net.Conn) {
 
 		if err != nil {
 			log.Printf("write request to backend error: %s", err)
+			writeErrResponse(r, http.StatusBadGateway, err.Error())
 			return
 		}
 
@@ -183,6 +209,7 @@ func httpForward(r, b net.Conn) {
 			if err != io.EOF {
 				log.Printf("read http response from backend error: %s", err)
 			}
+			writeErrResponse(r, http.StatusBadGateway, "gateway error")
 			return
 		}
 
@@ -194,6 +221,7 @@ func httpForward(r, b net.Conn) {
 
 		if err != nil {
 			log.Printf("write response to client error: %s", err)
+			return
 		}
 	}
 }
