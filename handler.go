@@ -112,6 +112,7 @@ func handleForward(c *tls.Conn, b *url.URL) {
 		remote, err = net.Dial("tcp", b.Host)
 		if err != nil {
 			log.Printf("dial to %s error: %s", b.Host, err)
+			writeErrResponse(c, http.StatusBadGateway, err.Error())
 			return
 		}
 		httpForward(c, remote)
@@ -136,11 +137,13 @@ func handleForward(c *tls.Conn, b *url.URL) {
 	//log.Println("begin data forward")
 
 	defer remote.Close()
+
 	ch := make(chan struct{}, 2)
 	go func() {
 		io.Copy(c, remote)
 		ch <- struct{}{}
 	}()
+
 	go func() {
 		io.Copy(remote, c)
 		ch <- struct{}{}
