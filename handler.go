@@ -169,6 +169,10 @@ func httpForward(r, b net.Conn) {
 		//log.Printf("%+v\n", req.Header)
 		req.Write(b)
 
+		if req.Body != nil {
+			req.Body.Close()
+		}
+
 		res, err := http.ReadResponse(bb, req)
 		if err != nil {
 			if err != io.EOF {
@@ -176,6 +180,11 @@ func httpForward(r, b net.Conn) {
 			}
 			return
 		}
+
 		res.Write(r)
+
+		if res.Body != nil {
+			res.Body.Close()
+		}
 	}
 }
