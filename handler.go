@@ -167,10 +167,15 @@ func httpForward(r, b net.Conn) {
 		req.Header.Add("X-Real-Ip", addr.IP.String())
 
 		//log.Printf("%+v\n", req.Header)
-		req.Write(b)
+		err = req.Write(b)
 
 		if req.Body != nil {
 			req.Body.Close()
+		}
+
+		if err != nil {
+			log.Printf("write request to backend error: %s", err)
+			return
 		}
 
 		res, err := http.ReadResponse(bb, req)
@@ -181,10 +186,14 @@ func httpForward(r, b net.Conn) {
 			return
 		}
 
-		res.Write(r)
+		err = res.Write(r)
 
 		if res.Body != nil {
 			res.Body.Close()
+		}
+
+		if err != nil {
+			log.Printf("write response to client error: %s", err)
 		}
 	}
 }
